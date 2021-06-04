@@ -18,11 +18,10 @@ from todgb import TODGb
 from sda_mod import OpSimAtmosphereMod
 
 
-# observation schedule
+# Default parameters
 START_TIME = 1577839800.0
 DURATION = 60*60*24
-#DURATION = 60*60*24
-STOP_TIME = START_TIME + DURATION
+
 SAMPLE_RATE = 100 #Hz
 SCAN_SPEED = 120 # deg/s
 
@@ -34,11 +33,15 @@ OT_LAT = '{}'.format(28 + 18*1/60 + 8*1/60/60)
 # map making
 NSIDE = 32
 
-def setup(comm):
+# Obs name
+OBS_NAME = 'gb_atm'
+
+def setup(comm, args):
     '''Setup the observation'''
+
     # focal plane
-    fp_sron = toast.pipeline_tools.Focalplane(fname_pickle='sron.pkl')
-    totsamples = int((STOP_TIME - START_TIME)*SAMPLE_RATE)
+    fp_tmp = toast.pipeline_tools.Focalplane(fname_pickle=args.fp_path)
+    totsamples = int(args.duration*args.sample_rate)
 
     if comm.comm_group is not None:
         ndetrank = comm.comm_group.size
@@ -46,41 +49,40 @@ def setup(comm):
         ndetrank = 1
 
     todgb = TODGb(comm.comm_group,
-                  fp_sron.detquats,
+                  fp_tmp.detquats,
                   totsamples,
-                  firsttime=START_TIME,
-                  el=60,
+                  firsttime=args.start_time,
+                  el=args.elevation,
                   site_lon=OT_LON,
                   site_lat=OT_LAT,
                   site_alt=OT_ALTITUDE,
-                  scanrate=SCAN_SPEED,
+                  scanrate=args.scan_speed,
                   detranks=ndetrank,
-                  boresight_angle=90)
+                  boresight_angle=args.boresight_angle)
 
     obs = {}
-    obs["name"] = "gb_test"
-    obs["tod"] = todgb
-    obs["noise"] = fp_sron.noise
-    obs["id"] = 2725
+    obs['name'] = OBS_NAME
+    obs['tod'] = todgb
+    obs['noise'] = fp_tmp.noise
+    obs['id'] = 2725
     obs['rate'] = 100
-    #obs["intervals"] = tod.subscans
-    #obs["site"] = site
-    obs["site_name"] = 'Teide Observatory'
-    obs["site_id"] = 128
-    obs["altitude"] = OT_ALTITUDE
-    obs["weather"] = Weather("weather_Atacama.fits")
-    obs["telescope_name"] = 'GroundBIRD'
-    obs["telescope_id"] = 0
-    obs["focalplane"] = fp_sron.detector_data
-    obs["fpradius"] = fp_sron.radius
-    obs["start_time"] = START_TIME
-    obs["season"] = 2020
-    obs["date"] = '2020-0101'
-    obs["MJD"] = 58849.034722
-    obs["rising"] = False
-    obs["mindist_sun"] = 86.36308327288089
-    obs["mindist_moon"] = 40.32976225720199
-    obs["el_sun"] = -18.68
+
+    obs['site_name'] = 'Teide Observatory'
+    obs['site_id'] = 128
+    obs['altitude'] = OT_ALTITUDE
+    obs['weather'] = Weather("weather_Atacama.fits")
+    obs['telescope_name'] = 'GroundBIRD'
+    obs['telescope_id'] = 0
+    obs['focalplane'] = fp_tmp.detector_data
+    obs['fpradius'] = fp_tmp.radius
+    obs['start_time'] = args.start_time
+    obs['season'] = 2020
+    obs['date'] = '2020-0101'
+    obs['MJD'] = 58849.034722
+    obs['rising'] = False
+    obs['mindist_sun'] = 86.36308327288089
+    obs['mindist_moon'] = 40.32976225720199
+    obs['el_sun'] = -18.68
 
     data = toast.Data(comm)
     data.obs.append(obs)
@@ -91,8 +93,21 @@ def setup(comm):
 def argument_parser():
     '''Argument parser'''
     parser = ArgumentParser()
-    parser.add_argument('--seed', default=0, type=int, help='Random seed.')
 
+    # Observation setting
+    parser.add_argument('--start_ut', default=START_TIME, type=float, help='Start time in Unix time.')
+    parser.add_argument('--duration', default=DURATION, type=float, help='Duration in seconds.')
+    parser.add_argument('--sample_rate', default=SAMPLE_RATE, type=float, help='Sample rate in Hz')
+
+    # Telescope setting
+    parser.add_argument('--fp_path', default='./sron.pkl', type=str, help='Path to the focalplane info file.')
+    parser.add_argument('--elevation', default=60, type=float, help='Telescope elevation in degree.')
+    parser.add_argument('--scan_speed', default=120, type=float, help='Scan speed in deg/s.')
+    parser.add_argument('--boresight_angle', default=0, type=float, help='Boresight angle in degree.')
+
+
+    # Simulation setting
+    parser.add_argument('--seed', default=0, type=int, help='Random seed.')
     parser.add_argument('--zmax', default=1000, type=float,
                         help='Maximum altitude to integrate')
     parser.add_argument('--zatm', default=40000.0, type=float,
@@ -151,16 +166,13 @@ def main():
 
     args = argument_parser()
 
-    env = toast.Environment.get()                         
+    env = toast.Environment.get()
     env.set_log_level('DEBUG')
     
     mpiworld, procs, rank = toast.mpi.get_world()
     comm = toast.mpi.Comm(mpiworld, procs)
 
-    if rank == 0:
-        print(comm)
-
-    data = setup(comm)
+    data = setup(comm, args)
 
     # Atmospheric simulation
     atmsim = OpSimAtmosphereMod(
