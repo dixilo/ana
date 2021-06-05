@@ -378,7 +378,8 @@ class OpSimAtmosphereMod(Operator):
         self, sim, prefix, obsname, scan_range, tmin, tmax, comm, rmin, rmax
     ):
         """Create snapshots of the atmosphere"""
-        from ..vis import set_backend
+        from toast.vis import set_backend
+        log = Logger.get()
 
         set_backend()
         import matplotlib.pyplot as plt

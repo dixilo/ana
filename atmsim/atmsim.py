@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''Test'''
+'''Simulation of atmospheric radiation impact on GroundBIRD TOD'''
 
 import argparse
 import matplotlib.pyplot as plt
@@ -20,7 +20,7 @@ from sda_mod import OpSimAtmosphereMod
 
 # Default parameters
 START_TIME = 1577839800.0
-DURATION = 60*60*24
+DURATION = 60
 
 SAMPLE_RATE = 100 #Hz
 SCAN_SPEED = 120 # deg/s
@@ -32,9 +32,12 @@ OT_LAT = '{}'.format(28 + 18*1/60 + 8*1/60/60)
 
 # map making
 NSIDE = 32
+BASELINE_LENGTH = 10
 
 # Obs name
 OBS_NAME = 'gb_atm'
+ATM_NAME = 'atm'
+DESTRIPED_NAME = 'destriped'
 
 def setup(comm, args):
     '''Setup the observation'''
@@ -51,7 +54,7 @@ def setup(comm, args):
     todgb = TODGb(comm.comm_group,
                   fp_tmp.detquats,
                   totsamples,
-                  firsttime=args.start_time,
+                  firsttime=args.start_ut,
                   el=args.elevation,
                   site_lon=OT_LON,
                   site_lat=OT_LAT,
@@ -61,7 +64,7 @@ def setup(comm, args):
                   boresight_angle=args.boresight_angle)
 
     obs = {}
-    obs['name'] = OBS_NAME
+    obs['name'] = args.obs_name
     obs['tod'] = todgb
     obs['noise'] = fp_tmp.noise
     obs['id'] = 2725
@@ -70,19 +73,12 @@ def setup(comm, args):
     obs['site_name'] = 'Teide Observatory'
     obs['site_id'] = 128
     obs['altitude'] = OT_ALTITUDE
-    obs['weather'] = Weather("weather_Atacama.fits")
+    obs['weather'] = Weather(args.weather_path)
     obs['telescope_name'] = 'GroundBIRD'
     obs['telescope_id'] = 0
     obs['focalplane'] = fp_tmp.detector_data
     obs['fpradius'] = fp_tmp.radius
-    obs['start_time'] = args.start_time
-    obs['season'] = 2020
-    obs['date'] = '2020-0101'
-    obs['MJD'] = 58849.034722
-    obs['rising'] = False
-    obs['mindist_sun'] = 86.36308327288089
-    obs['mindist_moon'] = 40.32976225720199
-    obs['el_sun'] = -18.68
+    obs['start_time'] = args.start_ut
 
     data = toast.Data(comm)
     data.obs.append(obs)
@@ -104,9 +100,11 @@ def argument_parser():
     parser.add_argument('--elevation', default=60, type=float, help='Telescope elevation in degree.')
     parser.add_argument('--scan_speed', default=120, type=float, help='Scan speed in deg/s.')
     parser.add_argument('--boresight_angle', default=0, type=float, help='Boresight angle in degree.')
+    parser.add_argument('--weather_path', default='./weather_Atacama.fits',
+                        help='Path to the weather file of the observation site')
+    parser.add_argument('--obs_name', default=OBS_NAME, type=str, help='Observation name.')
 
-
-    # Simulation setting
+    # Atmospheric simulation setting
     parser.add_argument('--seed', default=0, type=int, help='Random seed.')
     parser.add_argument('--zmax', default=1000, type=float,
                         help='Maximum altitude to integrate')
@@ -155,6 +153,14 @@ def argument_parser():
     parser.add_argument('--write_debug', default=True, type=bool,
                         help='If True, write debugging files.')
 
+    # Map making settings
+    parser.add_argument('--nside', default=NSIDE, type=int, help='NSIDE value for map making')
+    parser.add_argument('--outdir', type=str, default='maps', help='Path to the output directory.')
+    parser.add_argument('--outprefix', type=str, default='gb_atm_', help='Prefix to the output map files')
+    parser.add_argument('--baseline_length', default=BASELINE_LENGTH, type=int, 
+                        help='Baseline length for map-making algorithm')
+
+
     args = parser.parse_args()
 
     return args
@@ -175,8 +181,9 @@ def main():
     data = setup(comm, args)
 
     # Atmospheric simulation
+    
     atmsim = OpSimAtmosphereMod(
-        out="atm_90",
+        out=ATM_NAME,
         realization=args.seed,
         component=123456,
         lmin_center=args.lmin_center,
@@ -206,18 +213,17 @@ def main():
     )
     atmsim.exec(data)
     
-    toast.todmap.OpPointingHpix(nside=NSIDE, nest=True, mode="IQU").exec(data)
+    toast.todmap.OpPointingHpix(nside=args.nside, nest=True, mode='IQU').exec(data)
     
-    destriped_name = "destriped_90"
-    toast.tod.OpCacheCopy(input='atm_90', output=destriped_name, force=True).exec(data)
+    toast.tod.OpCacheCopy(input=ATM_NAME, output=DESTRIPED_NAME, force=True).exec(data)
 
     mapmaker = toast.todmap.OpMapMaker(
-        nside=NSIDE,
+        nside=args.nside,
         nnz=3,
-        name=destriped_name,
-        outdir='maps_90',
-        outprefix="toast_test_",
-        baseline_length=10,
+        name=DESTRIPED_NAME,
+        outdir=args.outdir,
+        outprefix=args.outprefix,
+        baseline_length=args.baseline_length,
         iter_max=100,
         use_noise_prior=False,
     )
