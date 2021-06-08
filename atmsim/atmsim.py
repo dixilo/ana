@@ -61,7 +61,8 @@ def setup(comm, args):
                   site_alt=OT_ALTITUDE,
                   scanrate=args.scan_speed,
                   detranks=ndetrank,
-                  boresight_angle=args.boresight_angle)
+                  boresight_angle=args.boresight_angle,
+                  rate=args.sample_rate)
 
     obs = {}
     obs['name'] = args.obs_name
