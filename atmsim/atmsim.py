@@ -216,12 +216,12 @@ def main():
     
     toast.todmap.OpPointingHpix(nside=args.nside, nest=True, mode='IQU').exec(data)
     
-    toast.tod.OpCacheCopy(input=ATM_NAME, output=DESTRIPED_NAME, force=True).exec(data)
+    #toast.tod.OpCacheCopy(input=ATM_NAME, output=DESTRIPED_NAME, force=True).exec(data)
 
     mapmaker = toast.todmap.OpMapMaker(
         nside=args.nside,
         nnz=3,
-        name=DESTRIPED_NAME,
+        name=ATM_NAME,
         outdir=args.outdir,
         outprefix=args.outprefix,
         baseline_length=args.baseline_length,
